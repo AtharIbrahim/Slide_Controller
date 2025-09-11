@@ -56,7 +56,7 @@ The system consists of two components:
 - Python 3.7 or higher
 - Required Python packages (see requirements.txt)
 - PowerPoint or Google Slides installed
-- Video player (VLC, Windows Media Player, etc.)
+- Video player (VLC, Windows Media Player, etc.).
 
 ## 🚀 Getting Started
 
