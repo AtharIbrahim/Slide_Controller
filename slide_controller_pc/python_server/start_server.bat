@@ -3,15 +3,15 @@ echo Starting Slide Controller Server...
 echo.
 
 REM Check if Python is installed
-python --version >nul 2>&1
+py -3.10 --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Error: Python is not installed or not in PATH
-    echo Please install Python from https://python.org
+    echo Error: Python 3.10 launcher is not available
+    echo Please install Python 3.10 and ensure the py launcher is available
     pause
     exit /b 1
 )
 
 REM Start the server
-python slide_controller_server.py
+py -3.10 slide_controller_server.py
 
 pause

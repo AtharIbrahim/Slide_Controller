@@ -22,7 +22,7 @@ This is the Python server component of the Slide Controller project that receive
 
 1. **Start the server**:
    ```bash
-   python slide_controller_server.py
+   py -3.10 slide_controller_server.py
    ```
 
 2. **Note the IP address** displayed in the console (e.g., `192.168.1.100`)

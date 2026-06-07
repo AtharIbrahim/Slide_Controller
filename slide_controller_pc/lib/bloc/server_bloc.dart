@@ -4,6 +4,15 @@ import 'package:process_run/process_run.dart';
 import 'server_event.dart';
 import 'server_state.dart';
 
+const int _serverPort = 8080;
+
+class _PythonCommand {
+  const _PythonCommand(this.executable, this.launchArguments);
+
+  final String executable;
+  final List<String> launchArguments;
+}
+
 class ServerBloc extends Bloc<ServerEvent, ServerState> {
   ServerBloc() : super(const ServerState()) {
     on<InitializeServer>(_onInitializeServer);
@@ -61,13 +70,34 @@ class ServerBloc extends Bloc<ServerEvent, ServerState> {
     ));
 
     try {
-      // Get the current directory
-      String workingDir = '${Directory.current.path}${Platform.pathSeparator}python_server';
+      final workingDir = _resolveServerDirectory();
+      if (workingDir == null) {
+        emit(state.copyWith(
+          requirementsInstalled: false,
+          statusMessage: 'Could not find python_server directory.',
+          status: ServerStatus.error,
+          errorMessage: 'Expected slide_controller_server.py inside python_server.',
+        ));
+        return;
+      }
+
+      final python = await _resolvePythonCommand();
+      if (python == null) {
+        emit(state.copyWith(
+          requirementsInstalled: false,
+          statusMessage: 'Python launcher not found.',
+          status: ServerStatus.error,
+          errorMessage: 'Could not find py -3.10, py -3, python3, or python on this machine.',
+        ));
+        return;
+      }
       
       // Check if requirements are installed
-      var result = await runExecutableArguments('python', 
-          ['-m', 'pip', 'check'],
-          workingDirectory: workingDir);
+      final result = await runExecutableArguments(
+        python.executable,
+        [...python.launchArguments, '-m', 'pip', 'check'],
+        workingDirectory: workingDir.path,
+      );
       
       if (result.exitCode == 0) {
         emit(state.copyWith(
@@ -82,9 +112,11 @@ class ServerBloc extends Bloc<ServerEvent, ServerState> {
           statusMessage: 'Installing requirements...',
         ));
         
-        var installResult = await runExecutableArguments('python', 
-            ['-m', 'pip', 'install', '-r', 'requirements.txt'],
-            workingDirectory: workingDir);
+        final installResult = await runExecutableArguments(
+          python.executable,
+          [...python.launchArguments, '-m', 'pip', 'install', '-r', 'requirements.txt'],
+          workingDirectory: workingDir.path,
+        );
         
         if (installResult.exitCode == 0) {
           emit(state.copyWith(
@@ -118,16 +150,50 @@ class ServerBloc extends Bloc<ServerEvent, ServerState> {
     ));
 
     try {
-      // Get the current directory
-      String workingDir = '${Directory.current.path}${Platform.pathSeparator}python_server';
-      
-      // Start the server in background
-      Process.start('python', ['slide_controller_server.py'],
-          workingDirectory: workingDir, mode: ProcessStartMode.detached);
-      
-      // Wait a bit and assume server started successfully
-      await Future.delayed(const Duration(seconds: 3));
-      
+      final workingDir = _resolveServerDirectory();
+      if (workingDir == null) {
+        emit(state.copyWith(
+          serverRunning: false,
+          statusMessage: 'Could not find python_server directory.',
+          status: ServerStatus.error,
+          errorMessage: 'Expected slide_controller_server.py inside python_server.',
+        ));
+        return;
+      }
+
+      final python = await _resolvePythonCommand();
+      if (python == null) {
+        emit(state.copyWith(
+          serverRunning: false,
+          statusMessage: 'Python launcher not found.',
+          status: ServerStatus.error,
+          errorMessage: 'Could not find py -3.10, py -3, python3, or python on this machine.',
+        ));
+        return;
+      }
+
+      await Process.start(
+        python.executable,
+        [...python.launchArguments, 'slide_controller_server.py'],
+        workingDirectory: workingDir.path,
+        mode: ProcessStartMode.detached,
+      );
+
+      emit(state.copyWith(
+        statusMessage: 'Waiting for server to become reachable...',
+      ));
+
+      final serverReady = await _waitForServerReady();
+      if (!serverReady) {
+        emit(state.copyWith(
+          serverRunning: false,
+          statusMessage: 'Server did not become reachable on port $_serverPort.',
+          status: ServerStatus.error,
+          errorMessage: 'The Python process started, but the WebSocket server was not reachable.',
+        ));
+        return;
+      }
+
       emit(state.copyWith(
         serverRunning: true,
         statusMessage: 'Server is running successfully! 🚀',
@@ -141,6 +207,71 @@ class ServerBloc extends Bloc<ServerEvent, ServerState> {
         errorMessage: e.toString(),
       ));
     }
+  }
+
+  Future<bool> _waitForServerReady() async {
+    for (var attempt = 0; attempt < 20; attempt++) {
+      try {
+        final socket = await Socket.connect(
+          InternetAddress.loopbackIPv4,
+          _serverPort,
+          timeout: const Duration(seconds: 1),
+        );
+        socket.destroy();
+        return true;
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    }
+
+    return false;
+  }
+
+  Directory? _resolveServerDirectory() {
+    var currentDirectory = Directory.current;
+
+    for (var i = 0; i < 8; i++) {
+      final candidate = Directory('${currentDirectory.path}${Platform.pathSeparator}python_server');
+      final serverFile = File('${candidate.path}${Platform.pathSeparator}slide_controller_server.py');
+
+      if (candidate.existsSync() && serverFile.existsSync()) {
+        return candidate;
+      }
+
+      final parentDirectory = currentDirectory.parent;
+      if (parentDirectory.path == currentDirectory.path) {
+        break;
+      }
+      currentDirectory = parentDirectory;
+    }
+
+    return null;
+  }
+
+  Future<_PythonCommand?> _resolvePythonCommand() async {
+    final candidates = <_PythonCommand>[
+      if (Platform.isWindows) const _PythonCommand('py', ['-3.10']),
+      if (Platform.isWindows) const _PythonCommand('py', ['-3']),
+      const _PythonCommand('python3', []),
+      const _PythonCommand('python', []),
+    ];
+
+    for (final candidate in candidates) {
+      try {
+        final result = await runExecutableArguments(
+          candidate.executable,
+          [...candidate.launchArguments, '--version'],
+        );
+
+        if (result.exitCode == 0) {
+          return candidate;
+        }
+      } catch (_) {
+        // Try the next candidate.
+      }
+    }
+
+    return null;
   }
 
   Future<void> _getIpAddress(Emitter<ServerState> emit) async {

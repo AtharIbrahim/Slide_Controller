@@ -397,7 +397,7 @@ class MyHomePage extends StatelessWidget {
     }
 
     final qrSize = ResponsiveHelper.isMobile(context) ? 150.0 : 200.0;
-    final serverUrl = 'http://${state.ipAddress}:5000';
+    final serverUrl = 'ws://${state.ipAddress}:8080';
 
     return Container(
       padding: const EdgeInsets.all(16),
