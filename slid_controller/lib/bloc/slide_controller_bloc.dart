@@ -13,6 +13,9 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
   Timer? _timer;
   StreamSubscription<bool>? _connectionSubscription;
   StreamSubscription<String>? _errorSubscription;
+  DateTime? _lastLaserMoveSentAt;
+  double? _lastLaserMoveX;
+  double? _lastLaserMoveY;
 
   SlideControllerBloc() : super(const SlideControllerState()) {
     on<ConnectToServer>(_onConnectToServer);
@@ -230,9 +233,22 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
     Emitter<SlideControllerState> emit,
   ) async {
     if (!state.settings.laserPointerEnabled || !state.isLaserPointerActive) {
-      print('Laser pointer move rejected: enabled=${state.settings.laserPointerEnabled}, active=${state.isLaserPointerActive}');
       return;
     }
+
+    final now = DateTime.now();
+    if (_lastLaserMoveSentAt != null &&
+        now.difference(_lastLaserMoveSentAt!) < const Duration(milliseconds: 33) &&
+        _lastLaserMoveX != null &&
+        _lastLaserMoveY != null &&
+        (event.xPercent - _lastLaserMoveX!).abs() < 0.5 &&
+        (event.yPercent - _lastLaserMoveY!).abs() < 0.5) {
+      return;
+    }
+
+    _lastLaserMoveSentAt = now;
+    _lastLaserMoveX = event.xPercent;
+    _lastLaserMoveY = event.yPercent;
 
     try {
       if (state.connectionStatus == ConnectionStatus.connected) {
@@ -244,14 +260,12 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
           },
           'timestamp': DateTime.now().millisecondsSinceEpoch,
         };
-        
-        print('Sending laser pointer move: x=${event.xPercent}%, y=${event.yPercent}%');
-        await _service.sendMessage(message);
+
+        unawaited(_service.sendMessage(message));
       } else {
-        print('Not connected - cannot send laser pointer move');
+        return;
       }
     } catch (e) {
-      print('Error sending laser pointer move: $e');
       emit(state.copyWith(errorMessage: 'Failed to move laser pointer: $e'));
     }
   }
@@ -274,8 +288,8 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
           },
           'timestamp': DateTime.now().millisecondsSinceEpoch,
         };
-        
-        await _service.sendMessage(message);
+
+        unawaited(_service.sendMessage(message));
       }
     } catch (e) {
       emit(state.copyWith(errorMessage: 'Failed to click laser pointer: $e'));

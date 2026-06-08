@@ -340,8 +340,6 @@ void _handleLaserPointerMove(BuildContext context, Offset localPosition, Size co
   final double clampedX = xPercent.clamp(0.0, 100.0);
   final double clampedY = yPercent.clamp(0.0, 100.0);
   
-  print('Laser pointer move: x=$clampedX%, y=$clampedY% (Container: ${containerSize.width}x${containerSize.height})');
-  
   context.read<SlideControllerBloc>().add(
     SendLaserPointerMove(clampedX, clampedY),
   );

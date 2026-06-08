@@ -14,12 +14,14 @@ class SlideController:
     def __init__(self):
         self.presentation_mode = False
         self.current_slide = 0
+        self._latest_laser_move = None
+        self._laser_move_worker_running = False
         
         # Disable pyautogui's fail-safe feature for presentations
         pyautogui.FAILSAFE = False
         
-        # Set a short pause between commands to prevent issues
-        pyautogui.PAUSE = 0.1
+        # Keep commands responsive; the mobile app already throttles move events.
+        pyautogui.PAUSE = 0.01
     
     def next_slide(self):
         """Move to the next slide using keyboard shortcut"""
@@ -91,20 +93,38 @@ class SlideController:
 
     def laser_pointer_move(self, x_percent, y_percent):
         """Move laser pointer to specific screen coordinates based on percentages"""
+        self._latest_laser_move = (x_percent, y_percent)
+        if self._laser_move_worker_running:
+            return
+
+        self._laser_move_worker_running = True
+        self._schedule_background_task(self._flush_laser_pointer_moves())
+
+    def _move_laser_pointer(self, x_percent, y_percent):
+        screen_width, screen_height = pyautogui.size()
+        x = int((x_percent / 100.0) * screen_width)
+        y = int((y_percent / 100.0) * screen_height)
+        pyautogui.moveTo(x, y, duration=0)
+
+    async def _flush_laser_pointer_moves(self):
         try:
-            # Get screen dimensions
-            screen_width, screen_height = pyautogui.size()
-            
-            # Convert percentages to actual coordinates
-            x = int((x_percent / 100.0) * screen_width)
-            y = int((y_percent / 100.0) * screen_height)
-            
-            # Move mouse cursor (which acts as laser pointer in presentation mode)
-            pyautogui.moveTo(x, y, duration=0.1)
-            logger.info(f"🎯 Laser pointer moved to ({x}, {y}) - {x_percent:.1f}%, {y_percent:.1f}%")
-            
-        except Exception as e:
-            logger.error(f"❌ Error moving laser pointer: {e}")
+            while self._latest_laser_move is not None:
+                x_percent, y_percent = self._latest_laser_move
+                self._latest_laser_move = None
+                try:
+                    await asyncio.to_thread(self._move_laser_pointer, x_percent, y_percent)
+                    logger.info(f"🎯 Laser pointer moved to ({x_percent:.1f}%, {y_percent:.1f}%)")
+                except Exception as e:
+                    logger.error(f"❌ Error moving laser pointer: {e}")
+        finally:
+            self._laser_move_worker_running = False
+
+    def _schedule_background_task(self, coroutine):
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(coroutine)
+        except RuntimeError:
+            asyncio.run(coroutine)
 
     def laser_pointer_click(self, x_percent, y_percent):
         """Click at specific coordinates (useful for highlighting)"""

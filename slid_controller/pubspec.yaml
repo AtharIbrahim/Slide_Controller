@@ -42,6 +42,9 @@ dependencies:
   # Networking
   http:
   web_socket_channel:
+
+  # QR scanning
+  mobile_scanner: ^7.2.0
   
   # UI and animations
   flutter_animate:
