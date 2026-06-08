@@ -1,10 +1,12 @@
 import 'package:equatable/equatable.dart';
 import 'app_settings.dart';
+import 'connection_mode.dart';
 
 enum ConnectionStatus { disconnected, connecting, connected, error, reconnecting }
 
 class SlideControllerState extends Equatable {
   final ConnectionStatus connectionStatus;
+  final ConnectionMode connectionMode;
   final String? serverIp;
   final int currentSlide;
   final String? errorMessage;
@@ -21,6 +23,7 @@ class SlideControllerState extends Equatable {
 
   const SlideControllerState({
     this.connectionStatus = ConnectionStatus.disconnected,
+    this.connectionMode = ConnectionMode.wifi,
     this.serverIp,
     this.currentSlide = 0,
     this.errorMessage,
@@ -38,6 +41,7 @@ class SlideControllerState extends Equatable {
 
   SlideControllerState copyWith({
     ConnectionStatus? connectionStatus,
+    ConnectionMode? connectionMode,
     String? serverIp,
     int? currentSlide,
     String? errorMessage,
@@ -54,6 +58,7 @@ class SlideControllerState extends Equatable {
   }) {
     return SlideControllerState(
       connectionStatus: connectionStatus ?? this.connectionStatus,
+      connectionMode: connectionMode ?? this.connectionMode,
       serverIp: serverIp ?? this.serverIp,
       currentSlide: currentSlide ?? this.currentSlide,
       errorMessage: errorMessage ?? this.errorMessage,
@@ -73,6 +78,7 @@ class SlideControllerState extends Equatable {
   @override
   List<Object?> get props => [
         connectionStatus,
+        connectionMode,
         serverIp,
         currentSlide,
         errorMessage,

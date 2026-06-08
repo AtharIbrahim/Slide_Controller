@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:process_run/process_run.dart';
 import 'server_event.dart';
 import 'server_state.dart';
+import '../services/ble_command_bridge.dart';
 
 const int _serverPort = 8080;
 
@@ -14,6 +15,8 @@ class _PythonCommand {
 }
 
 class ServerBloc extends Bloc<ServerEvent, ServerState> {
+  final BleCommandBridge _bleCommandBridge = BleCommandBridge();
+
   ServerBloc() : super(const ServerState()) {
     on<InitializeServer>(_onInitializeServer);
     on<CheckRequirements>(_onCheckRequirements);
@@ -34,6 +37,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerState> {
     // Start server if requirements are installed
     if (state.requirementsInstalled) {
       await _startServer(emit);
+      await _startBluetoothBridge(emit);
     }
   }
 
@@ -47,6 +51,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerState> {
     }
     if (state.requirementsInstalled) {
       await _startServer(emit);
+      await _startBluetoothBridge(emit);
     }
   }
 
@@ -60,6 +65,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerState> {
     await _checkRequirements(emit);
     if (state.requirementsInstalled) {
       await _startServer(emit);
+      await _startBluetoothBridge(emit);
     }
   }
 
@@ -209,6 +215,17 @@ class ServerBloc extends Bloc<ServerEvent, ServerState> {
     }
   }
 
+  Future<void> _startBluetoothBridge(Emitter<ServerState> emit) async {
+    try {
+      await _bleCommandBridge.initializeAndAdvertise();
+    } catch (e) {
+      emit(state.copyWith(
+        statusMessage: 'Wi-Fi server is running. Bluetooth bridge unavailable: $e',
+        status: state.serverRunning ? ServerStatus.running : state.status,
+      ));
+    }
+  }
+
   Future<bool> _waitForServerReady() async {
     for (var attempt = 0; attempt < 20; attempt++) {
       try {
@@ -291,5 +308,11 @@ class ServerBloc extends Bloc<ServerEvent, ServerState> {
         errorMessage: 'Failed to get IP address: ${e.toString()}',
       ));
     }
+  }
+
+  @override
+  Future<void> close() async {
+    await _bleCommandBridge.dispose();
+    return super.close();
   }
 }

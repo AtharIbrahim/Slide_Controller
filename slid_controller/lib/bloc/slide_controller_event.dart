@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../models/slide_command.dart';
 import '../models/app_settings.dart';
 
@@ -16,6 +17,15 @@ class ConnectToServer extends SlideControllerEvent {
 
   @override
   List<Object?> get props => [serverIp];
+}
+
+class ConnectToBluetoothDevice extends SlideControllerEvent {
+  final BluetoothDevice device;
+
+  const ConnectToBluetoothDevice(this.device);
+
+  @override
+  List<Object?> get props => [device.remoteId.str];
 }
 
 class DisconnectFromServer extends SlideControllerEvent {}

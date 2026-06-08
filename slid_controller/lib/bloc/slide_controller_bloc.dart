@@ -1,24 +1,31 @@
 import 'dart:async';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:slid_controller/models/app_settings.dart';
+import 'package:slid_controller/models/connection_mode.dart';
 import '../models/slide_controller_state.dart';
 import '../models/slide_command.dart';
 import '../services/slide_controller_service.dart';
+import '../services/bluetooth_slide_controller_service.dart';
 import '../services/settings_service.dart';
 import 'slide_controller_event.dart';
 
 class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerState> {
   final SlideControllerService _service = SlideControllerService();
+  final BluetoothSlideControllerService _bluetoothService = BluetoothSlideControllerService();
   final SettingsService _settingsService = SettingsService();
   Timer? _timer;
   StreamSubscription<bool>? _connectionSubscription;
+  StreamSubscription<bool>? _bluetoothConnectionSubscription;
   StreamSubscription<String>? _errorSubscription;
+  StreamSubscription<String>? _bluetoothErrorSubscription;
   DateTime? _lastLaserMoveSentAt;
   double? _lastLaserMoveX;
   double? _lastLaserMoveY;
 
   SlideControllerBloc() : super(const SlideControllerState()) {
     on<ConnectToServer>(_onConnectToServer);
+    on<ConnectToBluetoothDevice>(_onConnectToBluetoothDevice);
     on<DisconnectFromServer>(_onDisconnectFromServer);
     on<SendSlideCommand>(_onSendSlideCommand);
     on<NextSlide>(_onNextSlide);
@@ -61,7 +68,7 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
     
     // Monitor connection state
     _connectionSubscription = _service.connectionStateStream.listen((isConnected) {
-      if (!isConnected && state.connectionStatus == ConnectionStatus.connected) {
+      if (!isConnected && state.connectionStatus == ConnectionStatus.connected && state.connectionMode == ConnectionMode.wifi) {
         emit(state.copyWith(connectionStatus: ConnectionStatus.disconnected));
         
         // Auto-reconnect if enabled
@@ -78,6 +85,19 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
         errorMessage: error,
       ));
     });
+
+    _bluetoothConnectionSubscription = _bluetoothService.connectionStateStream.listen((isConnected) {
+      if (!isConnected && state.connectionStatus == ConnectionStatus.connected && state.connectionMode == ConnectionMode.bluetooth) {
+        emit(state.copyWith(connectionStatus: ConnectionStatus.disconnected));
+      }
+    });
+
+    _bluetoothErrorSubscription = _bluetoothService.errorStream.listen((error) {
+      emit(state.copyWith(
+        connectionStatus: ConnectionStatus.error,
+        errorMessage: error,
+      ));
+    });
   }
 
   Future<void> _onConnectToServer(
@@ -87,11 +107,13 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
     emit(state.copyWith(
       connectionStatus: ConnectionStatus.connecting,
       serverIp: event.serverIp,
+      connectionMode: ConnectionMode.wifi,
       errorMessage: null,
       reconnectAttempt: 0,
     ));
 
     try {
+      _bluetoothService.disconnect();
       final success = await _service.connect(event.serverIp);
       if (success) {
         // Save to connection history and settings
@@ -121,13 +143,53 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
     }
   }
 
+  Future<void> _onConnectToBluetoothDevice(
+    ConnectToBluetoothDevice event,
+    Emitter<SlideControllerState> emit,
+  ) async {
+    emit(state.copyWith(
+      connectionStatus: ConnectionStatus.connecting,
+      connectionMode: ConnectionMode.bluetooth,
+      serverIp: null,
+      errorMessage: null,
+      reconnectAttempt: 0,
+    ));
+
+    try {
+      _service.disconnect();
+      final success = await _bluetoothService.connect(event.device);
+      if (success) {
+        emit(state.copyWith(
+          connectionStatus: ConnectionStatus.connected,
+          errorMessage: null,
+        ));
+
+        if (state.settings.autoStartTimer) {
+          add(StartTimer());
+        }
+      } else {
+        emit(state.copyWith(
+          connectionStatus: ConnectionStatus.error,
+          errorMessage: 'Failed to connect over Bluetooth',
+        ));
+      }
+    } catch (e) {
+      emit(state.copyWith(
+        connectionStatus: ConnectionStatus.error,
+        errorMessage: 'Bluetooth connection error: $e',
+      ));
+    }
+  }
+
   Future<void> _onDisconnectFromServer(
     DisconnectFromServer event,
     Emitter<SlideControllerState> emit,
   ) async {
     _service.disconnect();
+    _bluetoothService.disconnect();
     emit(state.copyWith(
       connectionStatus: ConnectionStatus.disconnected,
+      connectionMode: ConnectionMode.wifi,
       isPresenting: false,
       currentSlide: 0,
     ));
@@ -144,7 +206,7 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
       return;
     }
 
-    final success = await _service.sendCommand(event.command);
+    final success = await _sendCommand(event.command);
     if (!success) {
       emit(state.copyWith(
         errorMessage: 'Failed to send command',
@@ -485,7 +547,7 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
     AttemptReconnect event,
     Emitter<SlideControllerState> emit,
   ) async {
-    if (state.serverIp == null) return;
+    if (state.serverIp == null || state.connectionMode != ConnectionMode.wifi) return;
     
     emit(state.copyWith(
       connectionStatus: ConnectionStatus.reconnecting,
@@ -509,5 +571,12 @@ class SlideControllerBloc extends Bloc<SlideControllerEvent, SlideControllerStat
     } catch (e) {
       print('Error loading connection history: $e');
     }
+  }
+
+  Future<bool> _sendCommand(SlideCommand command, {bool isHeartbeat = false}) async {
+    if (state.connectionMode == ConnectionMode.bluetooth) {
+      return _bluetoothService.sendCommand(command, isHeartbeat: isHeartbeat);
+    }
+    return _service.sendCommand(command, isHeartbeat: isHeartbeat);
   }
 }

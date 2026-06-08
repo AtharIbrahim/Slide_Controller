@@ -40,6 +40,7 @@ dependencies:
   equatable:
   flutter_screenutil:
   qr_flutter:
+  web_socket_channel:
 
 dev_dependencies:
   flutter_test:

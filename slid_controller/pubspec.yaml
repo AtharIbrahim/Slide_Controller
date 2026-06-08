@@ -42,6 +42,7 @@ dependencies:
   # Networking
   http:
   web_socket_channel:
+  flutter_blue_plus: ^2.3.8
 
   # QR scanning
   mobile_scanner: ^7.2.0

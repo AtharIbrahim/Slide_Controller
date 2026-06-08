@@ -1,0 +1,4 @@
+enum ConnectionMode {
+  wifi,
+  bluetooth,
+}

@@ -4,9 +4,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../bloc/slide_controller_bloc.dart';
 import '../bloc/slide_controller_event.dart';
 import '../models/slide_controller_state.dart';
+import '../models/connection_mode.dart';
 import 'advanced_controls_screen.dart';
 import 'settings_screen.dart';
 import 'qr_scanner_screen.dart';
+import 'bluetooth_scanner_screen.dart';
 
 class SlideControlScreen extends StatefulWidget {
   const SlideControlScreen({super.key});
@@ -71,7 +73,7 @@ class _SlideControlScreenState extends State<SlideControlScreen> {
       child: Row(
         children: [
           Icon(
-            _getConnectionIcon(state.connectionStatus),
+            _getConnectionIcon(state.connectionStatus, state.connectionMode),
             color: _getConnectionColor(state.connectionStatus),
             size: (isTablet ? 32 : 24) * scale,
           ),
@@ -383,7 +385,7 @@ class _SlideControlScreenState extends State<SlideControlScreen> {
           SizedBox(height: 16 * scale),
           
           Text(
-            'Enter your computer\'s IP address',
+            'Connect over Wi-Fi or Bluetooth',
             style: TextStyle(
               color: state.settings.isDarkMode 
                   ? Colors.white.withOpacity(0.8)
@@ -452,7 +454,7 @@ class _SlideControlScreenState extends State<SlideControlScreen> {
             SizedBox(height: 24 * scale),
           ],
           
-          // IP input with QR scanner button
+          // IP input with QR scanner / Bluetooth buttons
           Row(
             children: [
               Expanded(
@@ -484,40 +486,20 @@ class _SlideControlScreenState extends State<SlideControlScreen> {
                 ),
               ),
               SizedBox(width: 12 * scale),
-              // QR Scanner Button
-              Container(
-                height: (isTablet ? 64 : 56) * scale,
-                width: (isTablet ? 64 : 56) * scale,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.blue.shade600,
-                      Colors.purple.shade600,
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(12 * scale),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
-                      blurRadius: 8 * scale,
-                      spreadRadius: 2 * scale,
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12 * scale),
-                    onTap: () => _openQRScanner(context),
-                    child: Icon(
-                      Icons.qr_code_scanner,
-                      color: Colors.white,
-                      size: (isTablet ? 32 : 24) * scale,
-                    ),
-                  ),
-                ),
+              _buildActionButton(
+                context,
+                icon: Icons.qr_code_scanner,
+                onTap: () => _openQRScanner(context),
+                scale: scale,
+                isTablet: isTablet,
+              ),
+              SizedBox(width: 12 * scale),
+              _buildActionButton(
+                context,
+                icon: Icons.bluetooth,
+                onTap: () => _openBluetoothScanner(context),
+                scale: scale,
+                isTablet: isTablet,
               ),
             ],
           ).animate().slideX(delay: 400.ms),
@@ -677,10 +659,10 @@ class _SlideControlScreenState extends State<SlideControlScreen> {
     );
   }
 
-  IconData _getConnectionIcon(ConnectionStatus status) {
+  IconData _getConnectionIcon(ConnectionStatus status, ConnectionMode mode) {
     switch (status) {
       case ConnectionStatus.connected:
-        return Icons.wifi;
+        return mode == ConnectionMode.bluetooth ? Icons.bluetooth_connected : Icons.wifi;
       case ConnectionStatus.connecting:
         return Icons.wifi_find;
       case ConnectionStatus.reconnecting:
@@ -710,7 +692,9 @@ class _SlideControlScreenState extends State<SlideControlScreen> {
   String _getStatusText(SlideControllerState state) {
     switch (state.connectionStatus) {
       case ConnectionStatus.connected:
-        return 'Connected to ${state.serverIp}';
+        return state.connectionMode == ConnectionMode.bluetooth
+            ? 'Connected over Bluetooth'
+            : 'Connected to ${state.serverIp}';
       case ConnectionStatus.connecting:
         return 'Connecting...';
       case ConnectionStatus.reconnecting:
@@ -729,6 +713,61 @@ class _SlideControlScreenState extends State<SlideControlScreen> {
         builder: (context) => BlocProvider.value(
           value: context.read<SlideControllerBloc>(),
           child: const QRScannerScreen(),
+        ),
+      ),
+    );
+  }
+
+  void _openBluetoothScanner(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BlocProvider.value(
+          value: context.read<SlideControllerBloc>(),
+          child: const BluetoothScannerScreen(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton(
+    BuildContext context, {
+    required IconData icon,
+    required VoidCallback onTap,
+    required double scale,
+    required bool isTablet,
+  }) {
+    return Container(
+      height: (isTablet ? 64 : 56) * scale,
+      width: (isTablet ? 64 : 56) * scale,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.blue.shade600,
+            Colors.purple.shade600,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12 * scale),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.3),
+            blurRadius: 8 * scale,
+            spreadRadius: 2 * scale,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12 * scale),
+          onTap: onTap,
+          child: Icon(
+            icon,
+            color: Colors.white,
+            size: (isTablet ? 32 : 24) * scale,
+          ),
         ),
       ),
     );

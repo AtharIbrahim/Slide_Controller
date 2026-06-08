@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../bloc/slide_controller_bloc.dart';
 import '../bloc/slide_controller_event.dart';
 import '../models/slide_controller_state.dart';
+import 'bluetooth_scanner_screen.dart';
 
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
@@ -55,6 +56,21 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               size: (isTablet ? 32 : 24) * scale,
             ),
             actions: [
+              IconButton(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BlocProvider.value(
+                        value: context.read<SlideControllerBloc>(),
+                        child: const BluetoothScannerScreen(),
+                      ),
+                    ),
+                  );
+                },
+                icon: Icon(Icons.bluetooth, size: (isTablet ? 32 : 24) * scale),
+                tooltip: 'Switch to Bluetooth',
+              ),
               IconButton(
                 onPressed: _pasteFromClipboard,
                 icon: Icon(Icons.paste, size: (isTablet ? 32 : 24) * scale),
